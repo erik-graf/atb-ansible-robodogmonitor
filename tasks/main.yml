@@ -1,0 +1,118 @@
+
+- name: Stop and disable systemd-resolved
+  ansible.builtin.systemd_service:
+    state: stopped 
+    enabled: false 
+    name: systemd-resolved
+
+- name: Remove systemd-resolved's resolv.conf link
+  ansible.builtin.file:
+    path: /etc/resolv.conf
+    state: absent
+     
+- name: Create our own resolv.conf
+  ansible.builtin.template:
+    src: resolv.j2
+    dest: "/etc/resolv.conf"
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Ensure repo directory exists
+  ansible.builtin.file:
+    path: "{{ robodogmonitor_directory }}"
+    state: directory
+    mode: "0755"
+    owner: aecid
+    group: aecid
+  become: true
+
+- name: Clone or update repository
+  ansible.builtin.git:
+    repo: "{{ repo_url }}"
+    dest: "{{ robodogmonitor_directory }}"
+    version: "{{ repo_version }}"
+    update: false          # set false if you *never* want it to update
+    force: false
+    accept_hostkey: true
+  register: git_result
+  become: true
+  become_user: aecid
+  notify: Restart robodogmonitor
+
+- name: Adapt Things Stack FQDN
+  ansible.builtin.replace:
+    path: "{{ robodogmonitor_directory }}/main.py"
+    regexp: "broker =.*"
+    replace: "broker = '{{ things_stack_fqdn }}'"
+
+- name: Enter Application Password
+  ansible.builtin.replace:
+    path: "{{ robodogmonitor_directory }}/main.py"
+    regexp: "'password':.*"
+    replace: "'password': '{{ application_password }}'"
+
+- name: Adapt host IP
+  ansible.builtin.replace:
+    path: "{{ robodogmonitor_directory }}/main.py"
+    regexp: "app.run[(]debug"
+    replace: "app.run(host='{{ robodogmonitor_ip }}', debug"
+
+# System-wide uv install (root), idempotent via "creates"
+- name: Install uv system-wide
+  ansible.builtin.shell: |
+    set -euo pipefail
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    install -m 0755 /root/.local/bin/uv /usr/local/bin/uv
+  args:
+    executable: /bin/bash
+    creates: /usr/local/bin/uv
+  register: uv_install
+  become: true
+
+- name: Ensure robodogmonitor systemd unit file exists
+  ansible.builtin.copy:
+    dest: /etc/systemd/system/robodogmonitor.service
+    mode: "0644"
+    owner: root
+    group: root
+    content: |
+      [Unit]
+      Description=Robodog Monitor (Flask via uv)
+      After=network-online.target
+      Wants=network-online.target
+
+      [Service]
+      Type=simple
+      User=aecid
+      Group=aecid
+      WorkingDirectory={{ robodogmonitor_directory }}
+      ExecStart=/usr/local/bin/uv run main.py
+      Restart=on-failure
+      RestartSec=2
+      # Optional: ensure user-local bin is also on PATH (usually not needed if ExecStart is absolute)
+      Environment=PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/home/aecid/.local/bin
+      # Optional: if you want logs in journald only (default)
+      StandardOutput=journal
+      StandardError=journal
+
+      [Install]
+      WantedBy=multi-user.target
+  become: true
+  notify:
+    - Reload systemd
+    - Restart robodogmonitor
+
+- name: Enable and start robodogmonitor service
+  ansible.builtin.systemd:
+    name: robodogmonitor.service
+    enabled: true
+    state: started
+  become: true
+
+- name: Show what changed
+  ansible.builtin.debug:
+    msg:
+      - "git changed: {{ git_result.changed }}"
+      - "uv installed changed: {{ uv_install.changed | default(false) }}"
+

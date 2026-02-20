@@ -1,0 +1,12 @@
+---
+# defaults file for atb-ansible-robodogmonitor
+robodogmonitor_ip: "0.0.0.0"
+#robodogmonitor_ip: "172.17.100.130"
+robodogmonitor_directory: "/opt/robodogmonitor"
+robodogmonitor_directory_mode: "0755"
+repo_url: "https://github.com/erik-graf/robodog-monitor"
+repo_version: "main"                 # branch/tag/commit
+  #robodogmonitor_directory: "/opt/yourapp"
+
+things_stack_fqdn: "lorawan.newsroom.local"
+application_password: "NNSXS.F6NOTVRWSVXQTQVSAIJ673B44X32HYTQILKDYFY.YODJWHXQ7U75ERPQKKB6ZQCGW4LHB2NWNUORRKOHZIP76QII7BAQ"
