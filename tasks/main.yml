@@ -46,17 +46,30 @@
     regexp: "broker =.*"
     replace: "broker = '{{ things_stack_fqdn }}'"
 
-- name: Enter Application Password
-  ansible.builtin.replace:
-    path: "{{ robodogmonitor_directory }}/main.py"
-    regexp: "'password':.*"
-    replace: "'password': '{{ application_password }}'"
+      #- name: Enter Application Password
+      #  ansible.builtin.replace:
+      #    path: "{{ robodogmonitor_directory }}/main.py"
+      #    regexp: "'password':.*"
+      #    replace: "'password': '{{ application_password }}'"
 
 - name: Adapt host IP
   ansible.builtin.replace:
     path: "{{ robodogmonitor_directory }}/main.py"
     regexp: "app.run[(]debug"
     replace: "app.run(host='{{ robodogmonitor_ip }}', debug"
+
+- name: Read TTN Application API key from controller
+  ansible.builtin.set_fact:
+    tts_api_key_value: "{{ lookup('file', '/tmp/generated_secrets/' + app_id + '.api_key') | trim }}"
+
+- name: Overwrite password (API key) line in config
+  ansible.builtin.replace:
+    path: /opt/robodogmonitor/main.py
+    regexp: "'password':.*"
+    replace: "'password': \"{{ tts_api_key_value }}\""
+    mode: "0644"
+      #become: true
+
 
 # System-wide uv install (root), idempotent via "creates"
 - name: Install uv system-wide
